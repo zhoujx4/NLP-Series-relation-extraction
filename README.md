@@ -23,6 +23,16 @@ python run.py
 --weight_decay=0.01
 --early_stop=2
 ```
+预测
+```
+python predict.py
+--max_len=150
+--model_name_or_path=下载的预训练模型路径
+--per_gpu_eval_batch_size=500
+--output_dir="./output"
+--fine_tunning_model=微调后的模型路径
+```
+
 # 实验结果
 用的baseline模型是三层的roBERTa(具体请看https://github.com/ymcui/Chinese-BERT-wwm)
 在官方提供的dev集上的表现如下：

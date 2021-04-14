@@ -32,7 +32,9 @@ class DuIEDataset(Dataset):
 
         for line in tqdm(lines):
             example = json.loads(line)
-            spo_list = example['spo_list'] if "spo_list" in example.keys() else None
+            # spo_list = example['spo_list'] if "spo_list" in example.keys() else None
+            spo_list = example['spo_list'] if "spo_list" in example.keys() else []
+
             text_raw = example['text']
 
             #

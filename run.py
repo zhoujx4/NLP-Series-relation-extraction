@@ -140,11 +140,10 @@ def evaluate(args, eval_iter, model, mode):
         precision, recall, f1 = get_precision_recall_f1("./data/duie_dev.json",
                                                         predict_file_path)
         return precision, recall, f1
-    elif mode != "predict":
+    elif mode != "test":
         raise Exception("wrong mode for eval func")
 
     return
-
 
 def main():
     args = get_argparse().parse_args()
@@ -229,7 +228,6 @@ def main():
                 if early_stop == args.early_stop:
                     logger.info("Early stop in {} epoch!".format(epoch))
                     break
-
 
 if __name__ == "__main__":
     main()
