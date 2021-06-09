@@ -80,7 +80,6 @@ def check_format(line):
             return ret_code, json_info
     return ret_code, json_info
 
-
 def _parse_structured_ovalue(json_info):
     spo_result = []
     for item in json_info["spo_list"]:
@@ -93,7 +92,6 @@ def _parse_structured_ovalue(json_info):
                            "subject": s, \
                            "object": o})
     return spo_result
-
 
 def load_predict_result(predict_filename):
     """Loads the file to be predicted"""
@@ -132,7 +130,6 @@ def load_predict_result(predict_filename):
             predict_result[sent] = spo_result
     return ret_code, predict_result
 
-
 def load_test_dataset(golden_filename):
     """load golden file"""
     golden_dict = {}
@@ -150,7 +147,6 @@ def load_test_dataset(golden_filename):
             spo_result = _parse_structured_ovalue(json_info)
             golden_dict[sent] = spo_result
     return ret_code, golden_dict
-
 
 def load_alias_dict(alias_filename):
     """load alias dict"""
@@ -174,7 +170,6 @@ def load_alias_dict(alias_filename):
                 return ret_code, alias_dict
     return ret_code, alias_dict
 
-
 def del_duplicate(spo_list, alias_dict):
     """delete synonyms triples in predict result"""
     normalized_spo_list = []
@@ -182,7 +177,6 @@ def del_duplicate(spo_list, alias_dict):
         if not is_spo_in_list(spo, normalized_spo_list, alias_dict):
             normalized_spo_list.append(spo)
     return normalized_spo_list
-
 
 def is_spo_in_list(target_spo, golden_spo_list, alias_dict):
     """target spo是否在golden_spo_list中"""
@@ -203,7 +197,6 @@ def is_spo_in_list(target_spo, golden_spo_list, alias_dict):
             return True
     return False
 
-
 def _is_equal_o(o_a, o_b, alias_dict):
     for key_a, value_a in o_a.items():
         if key_a not in o_b:
@@ -220,7 +213,6 @@ def _is_equal_o(o_a, o_b, alias_dict):
         if o_a[key_b] not in value_b_alias_set:
             return False
     return True
-
 
 def calc_pr(predict_filename, alias_filename, golden_filename):
     """calculate precision, recall, f1"""
@@ -276,7 +268,6 @@ def calc_pr(predict_filename, alias_filename, golden_filename):
     ret_info["recall"] = recall
     ret_info["f1-score"] = f1
     return ret_info
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

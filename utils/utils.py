@@ -10,15 +10,38 @@ import codecs
 import json
 import logging
 import os
+import pickle
 import random
 import re
+import sys
 import time
-import zipfile
 from pathlib import Path
 
 import numpy as np
 import torch
 
+from utils import extract_chinese_and_punct
+
+chineseandpunctuationextractor = extract_chinese_and_punct.ChineseAndPunctuationExtractor()
+
+class Example(object):
+    def __init__(self,
+                 p_id=None,
+                 context=None,
+                 tok_to_orig_start_index=None,
+                 tok_to_orig_end_index=None,
+                 bert_tokens=None,
+                 spoes=None,
+                 sub_entity_list=None,
+                 gold_answer=None, ):
+        self.p_id = p_id
+        self.context = context
+        self.tok_to_orig_start_index = tok_to_orig_start_index
+        self.tok_to_orig_end_index = tok_to_orig_end_index
+        self.bert_tokens = bert_tokens
+        self.spoes = spoes
+        self.sub_entity_list = sub_entity_list
+        self.gold_answer = gold_answer
 
 def seed_everything(seed=1029):
     '''
@@ -147,7 +170,6 @@ def find_entity(text_raw,
             entity_list.append(entity)
     return list(set(entity_list))
 
-
 def decoding(example_all,
              id2spo,
              logits_all,
@@ -262,15 +284,10 @@ def write_prediction_results(formatted_outputs, file_path):
             json_str = json.dumps(formatted_instance, ensure_ascii=False)
             f.write(json_str)
             f.write('\n')
-        # zipfile_path = file_path + '.zip'
-        # f = zipfile.ZipFile(zipfile_path, 'w', zipfile.ZIP_DEFLATED)
-        # f.write(file_path)
-
-    # return zipfile_path
 
 def get_precision_recall_f1(golden_file, predict_file):
     r = os.popen(
-        'python3 ./re_official_evaluation.py --golden_file={} --predict_file={}'.
+        'python3 ./official_evaluation.py --golden_file={} --predict_file={}'.
             format(golden_file, predict_file))
     result = r.read()
     print("test", result)

@@ -15,11 +15,10 @@ from transformers import BertTokenizerFast
 
 from dataset.dataset import DuIEDataset
 from dataset.dataset import collate_fn
-from models.model import DuIE_model
+from models.model_mpn import DuIE_model
 from run import evaluate
 from utils.finetuning_argparse import get_argparse
 from utils.utils import seed_everything, init_logger, logger
-
 
 def main():
     parser = get_argparse()
@@ -37,7 +36,7 @@ def main():
         os.mkdir(args.output_dir)
 
     # Reads label_map.
-    with open("./data/predicate2id.json", 'r', encoding='utf8') as fp:
+    with open("config/官方baseline/predicate2id.json", 'r', encoding='utf8') as fp:
         label_map = json.load(fp)
     num_classes = (len(label_map.keys()) - 2) * 2 + 2
 

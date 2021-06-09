@@ -18,7 +18,7 @@ from transformers import BertTokenizerFast
 
 from dataset.dataset import DuIEDataset
 from dataset.dataset import collate_fn
-from models.model import DuIE_model
+from models.model_mpn import DuIE_model
 from utils.adversarial import FGM
 from utils.finetuning_argparse import get_argparse
 from utils.utils import seed_everything, ProgressBar, init_logger, logger, decoding, write_prediction_results, \
@@ -42,7 +42,8 @@ def train(args, train_iter, model):
     # 优化器
     no_decay = ["bias", "LayerNorm.weight"]
     bert_param_optimizer = list(model.bert.named_parameters())
-    linear_param_optimizer = list(model.classifier.named_parameters())
+    linear_param_optimizer = list(model.fc1.named_parameters())
+    linear_param_optimizer.extend(model.fc2.named_parameters())
     optimizer_grouped_parameters = [
         {'params': [p for n, p in bert_param_optimizer if not any(nd in n for nd in no_decay)],
          'weight_decay': args.weight_decay,
@@ -94,7 +95,7 @@ def train(args, train_iter, model):
 def evaluate(args, eval_iter, model, mode):
     logger.info("***** Running Evalation *****")
 
-    with open("data/id2spo.json", 'r', encoding='utf8') as fp:
+    with open("config/官方baseline/id2spo.json", 'r', encoding='utf8') as fp:
         id2spo = json.load(fp)
 
     probs_all = []
@@ -133,15 +134,17 @@ def evaluate(args, eval_iter, model, mode):
                                  offset_mapping_all)
 
 
-    predict_file_path = "./output/{}_predictions.json".format(mode)
+    if mode == "test":
+        predict_file_path = "./output/duie.json"
+    else:
+        predict_file_path = "./output/{}_predictions.json".format(mode)
     write_prediction_results(formatted_outputs, predict_file_path)
 
     if mode == "eval":
         precision, recall, f1 = get_precision_recall_f1("./data/duie_dev.json",
                                                         predict_file_path)
         return precision, recall, f1
-    elif mode != "test":
-        raise Exception("wrong mode for eval func")
+
 
     return
 
@@ -156,7 +159,7 @@ def main():
         os.mkdir(args.output_dir)
 
     # Reads label_map.
-    with open("./data/predicate2id.json", 'r', encoding='utf8') as fp:
+    with open("config/官方baseline/predicate2id.json", 'r', encoding='utf8') as fp:
         label_map = json.load(fp)
     num_classes = (len(label_map.keys()) - 2) * 2 + 2
 
@@ -176,25 +179,17 @@ def main():
     eval_dataset = DuIEDataset(args,
                                json_path="./data/duie_dev.json",
                                tokenizer=tokenizer)
-    # eval_dataset, test_dataset = random_split(eval_dataset,
-    #                                           [round(0.5 * len(eval_dataset)),
-    #                                            len(eval_dataset) - round(0.5 * len(eval_dataset))],
-    #                                           generator=torch.Generator().manual_seed(42))
+
     train_iter = DataLoader(train_dataset,
                             shuffle=True,
                             batch_size=args.per_gpu_train_batch_size,
                             collate_fn=collate_fn,
-                            num_workers=10)
+                            num_workers=20)
     eval_iter = DataLoader(eval_dataset,
                            shuffle=False,
                            batch_size=args.per_gpu_eval_batch_size,
                            collate_fn=collate_fn,
-                           num_workers=10)
-    # test_iter = DataLoader(test_dataset,
-    #                        shuffle=False,
-    #                        batch_size=args.per_gpu_eval_batch_size,
-    #                        collate_fn=collate_fn,
-    #                        num_workers=10)
+                           num_workers=20)
     logger.info("The nums of the train_dataset features is {}".format(len(train_dataset)))
     logger.info("The nums of the eval_dataset features is {}".format(len(eval_dataset)))
 
@@ -208,8 +203,8 @@ def main():
     for epoch, _ in enumerate(range(int(args.num_train_epochs))):
         model.train()
         train(args, train_iter, model)
-        # 每轮epoch在验证集上计算分数
         if epoch > 2:
+            # 每轮epoch在验证集上计算分数
             eval_precision, eval_recall, eval_f1 = evaluate(args, eval_iter, model, mode="eval")
             print("precision: {:.4f}\n recall: {:.4f}\n f1: {:.4f}".format
                   (100 * eval_precision, 100 * eval_recall, 100 * eval_f1))
