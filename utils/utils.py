@@ -10,10 +10,7 @@ import codecs
 import json
 import logging
 import os
-import pickle
 import random
-import re
-import sys
 import time
 from pathlib import Path
 
@@ -174,12 +171,12 @@ def decoding(example_all,
              id2spo,
              logits_all,
              seq_len_all,
-             offset_mapping_all
+             offset_mapping_all,
+             answer_dict
              ):
     """
     model output logits -> formatted spo (as in data set file)
     """
-    formatted_outputs = []
     for (i, (example, logits, seq_len, offset_mapping)) in \
             enumerate(zip(example_all, logits_all, seq_len_all, offset_mapping_all)):
         logits = logits[1:seq_len - 2 + 1]  # slice between [CLS] and [SEP] to get valid logits
@@ -191,8 +188,7 @@ def decoding(example_all,
             predictions.append(np.argwhere(token == 1).tolist())
 
         # format predictions into example-style output
-        formatted_instance = {}
-        text_raw = example['text']
+        text_raw = example.context
         complex_relation_label = [8, 10, 26, 32, 46]
         complex_relation_affi_label = [9, 11, 27, 28, 29, 33, 47]
 
@@ -208,6 +204,7 @@ def decoding(example_all,
         subject_id_list = list(set(subject_id_list))
 
         # fetch all valid spo by subject id
+        entity_list = []
         spo_list = []
         for id_ in subject_id_list:
             if id_ in complex_relation_affi_label:
@@ -225,10 +222,10 @@ def decoding(example_all,
                     for object_ in objects:
                         spo_list.append({
                             "predicate": id2spo['predicate'][id_],
-                            "object_type": {'@value': id2spo['object_type'][id_]},
-                            'subject_type': id2spo['subject_type'][id_],
                             "object": {'@value': object_},
-                            "subject": subject_
+                            "object_type": {'@value': id2spo['object_type'][id_]},
+                            "subject": subject_,
+                            'subject_type': id2spo['subject_type'][id_]
                         })
             else:
                 #  traverse all complex relation and look through their corresponding affiliated objects
@@ -265,16 +262,15 @@ def decoding(example_all,
                                         id2spo['object_type'][id_affi].split('_')[0]
                         spo_list.append({
                             "predicate": id2spo['predicate'][id_],
-                            "object_type": object_type_dict,
-                            "subject_type": id2spo['subject_type'][id_],
                             "object": object_dict,
-                            "subject": subject_
+                            "object_type": object_type_dict,
+                            "subject": subject_,
+                            "subject_type": id2spo['subject_type'][id_],
                         })
-
-        formatted_instance['text'] = example['text']
-        formatted_instance['spo_list'] = spo_list
-        formatted_outputs.append(formatted_instance)
-    return formatted_outputs
+            entity_list.extend(subjects)
+            entity_list.extend(objects)
+        answer_dict[i][0].extend(entity_list)
+        answer_dict[i][1].extend(spo_list)
 
 def write_prediction_results(formatted_outputs, file_path):
     """write the prediction results"""
@@ -285,16 +281,3 @@ def write_prediction_results(formatted_outputs, file_path):
             f.write(json_str)
             f.write('\n')
 
-def get_precision_recall_f1(golden_file, predict_file):
-    r = os.popen(
-        'python3 ./official_evaluation.py --golden_file={} --predict_file={}'.
-            format(golden_file, predict_file))
-    result = r.read()
-    print("test", result)
-    r.close()
-    d_result = json.loads(result)
-    precision = d_result["precision"]
-    recall = d_result["recall"]
-    f1 = d_result["f1-score"]
-
-    return precision, recall, f1

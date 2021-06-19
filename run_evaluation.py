@@ -19,6 +19,7 @@ import numpy as np
 from config.mpn.spo_config import SPO_TAG
 from utils.utils import logger
 
+
 def convert_spo_contour(qids, subject_preds, po_preds, eval_file, answer_dict):
     for qid, subject, po_pred in zip(qids.data.cpu().numpy(),
                                      subject_preds.data.cpu().numpy(),
@@ -35,7 +36,7 @@ def convert_spo_contour(qids, subject_preds, po_preds, eval_file, answer_dict):
         context = eval_file[qid.item()].context
         tok_to_orig_start_index = eval_file[qid.item()].tok_to_orig_start_index
         tok_to_orig_end_index = eval_file[qid.item()].tok_to_orig_end_index
-        start = np.where(po_pred[:, :, 0] > 0.5)  # 为何要取0.6
+        start = np.where(po_pred[:, :, 0] > 0.6)
         end = np.where(po_pred[:, :, 1] > 0.5)
 
         # 留意解码方式，一个主语有可能有多个关系存在
@@ -45,13 +46,41 @@ def convert_spo_contour(qids, subject_preds, po_preds, eval_file, answer_dict):
             for _end, predicate2 in zip(*end):
                 if _start <= _end <= len(tokens) - 2 and predicate1 == predicate2:
                     spoes[subject].append((_start, _end, predicate1))
-                    break
-
         if qid not in answer_dict:
             raise ValueError('error in answer_dict ')
         else:
             answer_dict[qid][0].append(
                 context[tok_to_orig_start_index[subject[0] - 1]:tok_to_orig_end_index[subject[1] - 1] + 1])
+
+def convert_spo_contour2(qids, end_list, subjects_str, output_logits, eval_file, answer_dict):
+    for qid, output_logit in zip(qids.data.cpu().numpy(),
+                                 output_logits):
+        if qid not in answer_dict:
+            raise ValueError('error in answer_dict ')
+
+        context = eval_file[qid].context
+
+        subjects = subjects_str[qid]
+        tok_to_orig_start_index = eval_file[qid].tok_to_orig_start_index
+        tok_to_orig_end_index = eval_file[qid].tok_to_orig_end_index
+        for subject in subjects:
+            answer_dict[qid][0].append(
+                context[tok_to_orig_start_index[subject[0] - 1]:tok_to_orig_end_index[subject[1] - 1] + 1])
+
+        spoes = answer_dict[qid][2]
+
+        s_e_o = np.where(output_logit > 0.5)
+        for i in range(len(s_e_o[0])):
+            s_end = s_e_o[0][i]
+            o_end = s_e_o[1][i]
+            predicate = s_e_o[2][i]
+            if s_end in end_list[qid] and o_end in end_list[qid]:
+                s = subjects[end_list[qid].index(s_end)]
+                o = subjects[end_list[qid].index(o_end)]
+                if s in spoes:
+                    spoes[s].append((o[0], o[1], predicate.item()))
+                else:
+                    spoes[s] = [(o[0], o[1], predicate.item())]
 
 def convert2ressult(args, eval_file, answer_dict):
     for qid in answer_dict.keys():
@@ -146,19 +175,18 @@ def convert2ressult(args, eval_file, answer_dict):
                 })
         answer_dict[qid][1].extend(po_predict)
 
-def run_evaluate(eval_file, answer_dict, chosen):
 
+def run_evaluate(eval_file, answer_dict, chosen):
     entity_em = 0
     entity_pred_num = 0
     entity_gold_num = 0
     tp, fp, fn = 0, 0, 0
     for key in answer_dict.keys():
-
         triple_gold = eval_file[key].gold_answer
-        entity_gold = eval_file[key].sub_entity_list
+        entity_gold = eval_file[key].sub_entity_list if hasattr(eval_file[key], "sub_entity_list") else eval_file[key].entity_list
 
-        entity_pred=answer_dict[key][0]
-        triple_pred=answer_dict[key][1]
+        entity_pred = answer_dict[key][0]
+        triple_pred = answer_dict[key][1]
 
         entity_em += len(set(entity_pred) & set(entity_gold))
         entity_pred_num += len(set(entity_pred))
@@ -181,14 +209,14 @@ def run_evaluate(eval_file, answer_dict, chosen):
 
     logger.info('============================================')
     logger.info("{}/entity_em: {},\nentity_pred_num&entity_gold_num: {}\t{} ".format(chosen, entity_em, entity_pred_num,
-                                                                               entity_gold_num))
+                                                                                     entity_gold_num))
     logger.info(
         "{}/entity_f1: {}, \nentity_precision: {},\nentity_recall: {} ".format(chosen, entity_f1, entity_precision,
                                                                                entity_recall))
     logger.info('============================================')
     logger.info("{}/em: {},\npre&gold: {}\t{} ".format(chosen, tp, tp + fp, tp + fn))
     logger.info("{}/f1: {}, \nPrecision: {},\nRecall: {} ".format(chosen, f * 100, p * 100,
-                                                            r * 100))
+                                                                  r * 100))
     return {'f1': f, "recall": r, "precision": p}
 
 def calculate_metric(spo_list_gt, spo_list_predict):

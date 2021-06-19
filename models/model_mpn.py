@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,7 +8,7 @@ from torch.nn import Parameter
 from torch.nn import init
 from transformers import BertModel
 from transformers import BertPreTrainedModel
-import math
+
 from dataset.data_utils import batch_gather
 
 
@@ -71,6 +73,7 @@ class Linear(nn.Module):
             self.in_features, self.out_features, self.bias is not None
         )
 
+
 class ConditionalLayerNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-12):
         """Construct a layernorm module in the TF style (epsilon inside the square root).
@@ -96,13 +99,14 @@ class ConditionalLayerNorm(nn.Module):
         x = (x - u) / torch.sqrt(s + self.variance_epsilon)
         return weight * x + bias
 
-class ERENet(BertPreTrainedModel):
+
+class model_mpn(BertPreTrainedModel):
     """
     ERENet : entity relation jointed extraction
     """
 
     def __init__(self, config, classes_num):
-        super(ERENet, self).__init__(config, classes_num)
+        super(model_mpn, self).__init__(config, classes_num)
         self.classes_num = classes_num
 
         # BERT model
@@ -118,51 +122,48 @@ class ERENet(BertPreTrainedModel):
     def forward(self,
                 q_ids=None,
                 passage_ids=None,
-                segment_ids=None,
-                token_type_ids=None,
                 subject_ids=None,
                 subject_labels=None,
                 object_labels=None,
                 eval_file=None,
                 is_eval=False):
         mask = (passage_ids != 0).float()
-        bert_encoder = self.bert(passage_ids, token_type_ids=segment_ids, attention_mask=mask)[0]
+        bert_encoder = self.bert(passage_ids, attention_mask=mask)[0]
         if not is_eval:
             sub_start_encoder = batch_gather(bert_encoder, subject_ids[:, 0])  # [B, H]
             sub_end_encoder = batch_gather(bert_encoder, subject_ids[:, 1])  # [B, H]
             subject = torch.cat([sub_start_encoder, sub_end_encoder], 1)  # [B, H*2]
-            # 这里 LyerNorm 的作用原理是什么？
-            context_encoder = self.LayerNorm(bert_encoder, subject)
+            context_encoder = self.LayerNorm(bert_encoder, subject)  # [B, L, H]
 
-            sub_preds = self.subject_dense(bert_encoder)
-            po_preds = self.po_dense(context_encoder).reshape(passage_ids.size(0), -1, self.classes_num, 2)  # [B, L, R, 2]
+            sub_preds = self.subject_dense(bert_encoder)  # [B, L, 2]
+            po_preds = self.po_dense(context_encoder)  # [B, L, R*2]
+            po_preds = po_preds.reshape(passage_ids.size(0), -1, self.classes_num, 2)  # [B, L, R, 2]
 
             subject_loss = self.loss_fct(sub_preds, subject_labels)  # [B, L, 2]
-            # subject_loss = F.binary_cross_entropy(F.sigmoid(sub_preds) ** 2, subject_labels, reduction='none')
+            # subject_loss = F.binary_cross_entropy(torch.sigmoid(sub_preds) ** 2, subject_labels, reduction='none')
             subject_loss = subject_loss.mean(2)  # [B, L]
-            subject_loss = torch.sum(subject_loss * mask.float()) / torch.sum(mask.float())  # 平均下来是单个 token 的 loss
+            subject_loss = torch.sum(subject_loss * mask.float()) / torch.sum(mask.float())
 
-            po_loss = self.loss_fct(po_preds, object_labels)
-            # po_loss = F.binary_cross_entropy(F.sigmoid(po_preds) ** 4, object_labels, reduction='none')
-            po_loss = torch.sum(po_loss.mean(3), 2)
-            po_loss = torch.sum(po_loss * mask.float()) / torch.sum(mask.float())  # 平均下来是单个 token 的loss
+            po_loss = self.loss_fct(po_preds, object_labels)  # [B, L, R, 2]
+            # po_loss = F.binary_cross_entropy(torch.sigmoid(po_preds) ** 2, object_labels, reduction='none')  # [B, L, R, 2]
+            po_loss = torch.sum(po_loss.mean(3), 2)  # [B, L]
+            po_loss = torch.sum(po_loss * mask.float()) / torch.sum(mask.float())
 
-            # 两个关系之间怎么平衡 ？
             loss = subject_loss + po_loss
 
             return loss, subject_loss, po_loss
 
         else:
-            subject_preds = torch.sigmoid(self.subject_dense(bert_encoder))
+            subject_preds = torch.sigmoid(self.subject_dense(bert_encoder))  # [B, L, 2]
+            subject_preds = subject_preds * mask.unsqueeze(-1)
             answer_list = list()
             for qid, sub_pred in zip(q_ids.cpu().numpy(),
                                      subject_preds.cpu().numpy()):
                 context = eval_file[qid].bert_tokens
-                start = np.where(sub_pred[:, 0] > 0.5)[0]  # 这是玄学？
+                start = np.where(sub_pred[:, 0] > 0.6)[0]
                 end = np.where(sub_pred[:, 1] > 0.5)[0]
                 subjects = []
 
-                # 这样的解码方式好像还是不能完全解决重叠问题
                 for i in start:
                     j = end[end >= i]
                     if i == 0 or i > len(context) - 2:
@@ -176,49 +177,42 @@ class ERENet(BertPreTrainedModel):
 
                 answer_list.append(subjects)
 
-            qid_ids, bert_encoders, pass_ids, subject_ids, token_type_ids = [], [], [], [], []
+            qid_ids, pass_ids, subject_ids, bert_encoders = [], [], [], []
             for i, subjects in enumerate(answer_list):
                 if subjects:
-                    qid = q_ids[i].unsqueeze(0).expand(len(subjects))
-                    pass_tensor = passage_ids[i, :].unsqueeze(0).expand(len(subjects), passage_ids.size(1))
+                    qid = q_ids[i].unsqueeze(0).expand(len(subjects))  # [len(s), 1]
+                    pass_tensor = passage_ids[i, :].unsqueeze(0).expand(len(subjects),
+                                                                        passage_ids.size(1))  # [len(s), L]
                     new_bert_encoder = bert_encoder[i, :, :].unsqueeze(0).expand(len(subjects),
                                                                                  bert_encoder.size(1),
-                                                                                 bert_encoder.size(2))
-
-                    token_type_id = torch.zeros((len(subjects), passage_ids.size(1)), dtype=torch.long)
-                    for index, (start, end) in enumerate(subjects):
-                        token_type_id[index, start:end + 1] = 1
+                                                                                 bert_encoder.size(2))  # [len(s), L, H]
 
                     qid_ids.append(qid)
                     pass_ids.append(pass_tensor)
                     subject_ids.append(torch.tensor(subjects, dtype=torch.long))
                     bert_encoders.append(new_bert_encoder)
-                    token_type_ids.append(token_type_id)
 
             if len(qid_ids) == 0:
-                subject_ids = torch.zeros(1, 2).long().to(bert_encoder.device)
-                qid_tensor = torch.tensor([-1], dtype=torch.long).to(bert_encoder.device)
-                po_tensor = torch.zeros(1, bert_encoder.size(1)).long().to(bert_encoder.device)
+                subject_ids = torch.zeros(1, 2).long().to(bert_encoder.device)  # [1, 2]
+                qid_tensor = torch.tensor([-1], dtype=torch.long).to(bert_encoder.device)  # [1]
+                po_tensor = torch.zeros(1, bert_encoder.size(1)).long().to(bert_encoder.device)  # [1, L]
                 return qid_tensor, subject_ids, po_tensor
 
-            qids = torch.cat(qid_ids).to(bert_encoder.device)
-            pass_ids = torch.cat(pass_ids).to(bert_encoder.device)
-            bert_encoders = torch.cat(bert_encoders).to(bert_encoder.device)
-            # token_type_ids = torch.cat(token_type_ids).to(bert_encoder.device)
-            subject_ids = torch.cat(subject_ids).to(bert_encoder.device)
+            qids = torch.cat(qid_ids).to(bert_encoder.device)  # [sum(len(x))), 1]
+            pass_ids = torch.cat(pass_ids).to(bert_encoder.device)  # [sum(len(x)), L]
+            bert_encoders = torch.cat(bert_encoders).to(bert_encoder.device)  # [sum(len(x)), L, H]
+            subject_ids = torch.cat(subject_ids).to(bert_encoder.device)  # [sum(len(x)), 2]
 
             flag = False
             split_heads = 1024
 
             bert_encoders_ = torch.split(bert_encoders, split_heads, dim=0)
             pass_ids_ = torch.split(pass_ids, split_heads, dim=0)
-            # token_type_ids_ = torch.split(token_type_ids, split_heads, dim=0)
             subject_encoder_ = torch.split(subject_ids, split_heads, dim=0)
 
             po_preds = list()
             for i in range(len(bert_encoders_)):
                 bert_encoders = bert_encoders_[i]
-                # token_type_ids = token_type_ids_[i]
                 pass_ids = pass_ids_[i]
                 subject_encoder = subject_encoder_[i]
 
@@ -227,23 +221,24 @@ class ERENet(BertPreTrainedModel):
                     # print('flag = True**********')
                     bert_encoders = bert_encoders.expand(2, bert_encoders.size(1), bert_encoders.size(2))
                     subject_encoder = subject_encoder.expand(2, subject_encoder.size(1))
-                    # pass_ids = pass_ids.expand(2, pass_ids.size(1))
 
-                sub_start_encoder = batch_gather(bert_encoders, subject_encoder[:, 0])
-                sub_end_encoder = batch_gather(bert_encoders, subject_encoder[:, 1])
-                subject = torch.cat([sub_start_encoder, sub_end_encoder], 1)
-                context_encoder = self.LayerNorm(bert_encoders, subject)
+                sub_start_encoder = batch_gather(bert_encoders, subject_encoder[:, 0])  # [B, H]
+                sub_end_encoder = batch_gather(bert_encoders, subject_encoder[:, 1])  # [B, H]
+                subject = torch.cat([sub_start_encoder, sub_end_encoder], 1)  # [B, H*2]
+                context_encoder = self.LayerNorm(bert_encoders, subject)  # # [B, L, H]
 
-                po_pred = self.po_dense(context_encoder).reshape(subject_encoder.size(0), -1, self.classes_num, 2)
+                po_pred = self.po_dense(context_encoder)  # [B, L, R*2]
+                po_pred = po_pred.reshape(pass_ids.size(0), -1, self.classes_num, 2)  # [B, L, R, 2]
 
                 if flag:
                     po_pred = po_pred[1, :, :, :].unsqueeze(0)
 
                 po_preds.append(po_pred)
 
-            po_tensor = torch.cat(po_preds).to(qids.device)
-            po_tensor = nn.Sigmoid()(po_tensor)
+            po_tensor = torch.cat(po_preds).to(qids.device)  # [sum((len(x)), L, R, 2]
+            po_tensor = nn.Sigmoid()(po_tensor)  # [sum((len(x)), B, L, R, 2]
             return qids, subject_ids, po_tensor
+
 
 if __name__ == '__main__':
     pass

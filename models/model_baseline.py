@@ -1,17 +1,11 @@
-import numpy as np
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import Parameter
-from torch.nn import init
 from transformers import BertModel
-from transformers import BertPreTrainedModel
 
-from utils.utils import batch_gather
 
-class DuIE_model(nn.Module):
+class model_baseline(nn.Module):
     def __init__(self, pretrained_model_path, num_classes):
-        super(DuIE_model, self).__init__()
+        super(model_baseline, self).__init__()
         self.bert = BertModel.from_pretrained(pretrained_model_path)
         self.fc1 = nn.Linear(self.bert.config.hidden_size, 250)
         self.fc2 = nn.Linear(250, num_classes)
@@ -20,9 +14,9 @@ class DuIE_model(nn.Module):
                 input_ids=None,
                 token_type_ids=None,
                 attention_mask=None):
+        mask = input_ids != 0
         output = self.bert(input_ids,
-                           token_type_ids=token_type_ids,
-                           attention_mask=attention_mask)
+                           attention_mask=mask)
         sequence_output, pooled_output = output[0], output[1]
         output1 = F.relu(self.fc1(sequence_output))
         logits = self.fc2(output1)
@@ -30,4 +24,4 @@ class DuIE_model(nn.Module):
         return logits
 
 if __name__ == '__main__':
-    model = DuIE_model("/data/zhoujx/prev_trained_model/rbt3", num_classes=10)
+    model = model_baseline("/data/zhoujx/prev_trained_model/rbt3", num_classes=10)

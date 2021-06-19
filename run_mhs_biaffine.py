@@ -16,12 +16,11 @@ from transformers import BertTokenizer
 
 from config.mpn import spo_config
 from dataset.dataset_mhs import mhs_DuIEDataset, read_examples
-from models.model_mhs import model_mhs
-from run_evaluation import convert2ressult, run_evaluate, convert_spo_contour2
+from models.model_mhs_biaffine import model_mhs_biaffine
+from mpn_evaluation import convert_spo_contour, convert2ressult, run_evaluate, convert_spo_contour2
 from utils.bert_optimizaation import BertAdam
 from utils.finetuning_argparse import get_argparse
 from utils.utils import seed_everything, ProgressBar, init_logger, logger, write_prediction_results
-
 
 def train(args, train_iter, model):
     logger.info("***** Running train *****")
@@ -81,6 +80,7 @@ def evaluate(args, eval_iter, model, mode):
     res = run_evaluate(eval_file, answer_dict, "dev")
 
     formatted_outputs = []
+    # for example in eval_file:
     for p_id, example in enumerate(eval_file):
         # p_id = example.p_id
         d_record = {}
@@ -90,9 +90,9 @@ def evaluate(args, eval_iter, model, mode):
         formatted_outputs.append(d_record)
 
     if mode == "test":
-        predict_file_path = "./output/mhs_duie.json"
+        predict_file_path = "./output/mpn_duie.json"
     else:
-        predict_file_path = "./output/mhs_{}_predictions.json".format(mode)
+        predict_file_path = "./output/mpn_{}_predictions.json".format(mode)
     write_prediction_results(formatted_outputs, predict_file_path)
 
     return res
@@ -132,17 +132,17 @@ def main():
         args.s2id[st] = i
         i += 1
     args.R_num = len(args.rel2id)
-    args.E_num = len(args.s2id)
+    args.Cs_num = len(args.s2id)
 
     # tokenizer
     args.tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path, do_lower_case=True)
 
     # Dataset & Dataloader
     train_dataset = mhs_DuIEDataset(args,
-                                    examples=read_examples(args, json_file="./data/duie_train.json"),
+                                    examples=read_examples(args, json_file="./data/duie_dev.json")[:10000],
                                     data_type="train")
     eval_dataset = mhs_DuIEDataset(args,
-                                   examples=read_examples(args, json_file="./data/duie_dev.json"),
+                                   examples=read_examples(args, json_file="./data/duie_dev.json")[20000:],
                                    data_type="dev")
 
     train_iter = DataLoader(train_dataset,
@@ -150,6 +150,8 @@ def main():
                             batch_size=args.per_gpu_train_batch_size,
                             collate_fn=train_dataset._create_collate_fn(),
                             num_workers=8)
+    # for batch in train_iter:
+    #     batch_token_ids, batch_subject_type_ids, batch_subject_labels, batch_object_labels = batch
 
     eval_iter = DataLoader(eval_dataset,
                            shuffle=False,
@@ -158,10 +160,10 @@ def main():
                            num_workers=4)
 
     # model
-    model = model_mhs.from_pretrained(args.model_name_or_path,
-                                      E_num=args.E_num,
-                                      E_em_size=250,
-                                      R_num=args.R_num)
+    model = model_mhs_biaffine.from_pretrained(args.model_name_or_path,
+                                                Cs_num=args.Cs_num,
+                                                cs_em_size=250,
+                                                R_num=args.R_num)
     model.to(args.device)
 
     # 优化器
@@ -200,7 +202,7 @@ def main():
             best_model = copy.deepcopy(model.module if hasattr(model, "module") else model)
             torch.save(best_model.state_dict(),
                        os.path.join(args.output_dir,
-                                    "mhs_{}_{}.pkl".format(os.path.split(args.model_name_or_path)[1], args.time)),
+                                    "mpn_{}_{}.pkl".format(os.path.split(args.model_name_or_path)[1], args.time)),
                        _use_new_zipfile_serialization=False)
         else:
             early_stop += 1

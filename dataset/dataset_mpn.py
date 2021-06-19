@@ -9,7 +9,6 @@
 import json
 import os
 import random
-from functools import partial
 
 import numpy as np
 import torch
@@ -20,9 +19,9 @@ from dataset.data_utils import covert_to_tokens, search_spo_index, search, Examp
 from dataset.data_utils import save, load
 from utils.utils import logger
 
-def read_examples(args, json_file, data_type):
 
-    examples_file = os.path.join(args.cache_data, os.path.splitext(os.path.split(json_file)[1])[0]+".pkl")
+def read_examples(args, json_file, data_type):
+    examples_file = os.path.join(args.cache_data, os.path.splitext(os.path.split(json_file)[1])[0] + ".pkl")
 
     if not os.path.exists(examples_file):
         complex_relation_label = [6, 8, 24, 30, 44]
@@ -36,7 +35,6 @@ def read_examples(args, json_file, data_type):
                 text_raw = src_data['text']
                 text_raw = text_raw.replace('®', '')
                 text_raw = text_raw.replace('◆', '')
-
                 tokens, tok_to_orig_start_index, tok_to_orig_end_index = covert_to_tokens(text_raw,
                                                                                           args.tokenizer,
                                                                                           return_orig_index=True)
@@ -44,13 +42,10 @@ def read_examples(args, json_file, data_type):
                 sub_po_dict, sub_ent_list, spo_list = dict(), list(), list()
                 spoes = {}
                 for spo in src_data.get('spo_list', []):
-
                     # spo_dict = dict()
                     for spo_object in spo['object'].keys():
-                        # assign relation label
-                        # 简单情况
                         if spo['predicate'] in args.spo_conf:
-                            # simple relation
+                            # 简单情况
                             predicate_label = args.spo_conf[spo['predicate']]
 
                             subject_sub_tokens = covert_to_tokens(spo['subject'],
@@ -80,7 +75,6 @@ def read_examples(args, json_file, data_type):
 
                         subject_start, object_start = search_spo_index(tokens, subject_sub_tokens, object_sub_tokens)
 
-                        # 会存在这种情况 ？
                         ###########################################
                         if subject_start == -1:
                             subject_start = search(subject_sub_tokens, tokens)
@@ -94,31 +88,10 @@ def read_examples(args, json_file, data_type):
                             if s not in spoes:
                                 spoes[s] = []
                             spoes[s].append(o)
-                examples.append(
-                    Example(
-                        p_id=p_id,  # 1
-                        context=text_raw,  # '《邪少兵王》是冰火未央写的网络小说连载于旗峰天下'
-                        tok_to_orig_start_index=tok_to_orig_start_index,  # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
-                        tok_to_orig_end_index=tok_to_orig_end_index,  # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
-                        bert_tokens=tokens,  # ['[CLS]', '《', '邪', '少', '兵', '王', '》', '是', '冰', '火', '未', '央', '写', '的', '网', '络', '小', '说', '连', '载', '于', '旗', '峰', '天', '下', '[SEP]']
-                        sub_entity_list=sub_ent_list,  # ['邪少兵王']
-                        gold_answer=src_data.get('spo_list', []),  # [{'predicate': '作者', 'object_type': {'@value': '人物'}, 'subject_type': '图书作品', 'object': {'@value': '冰火未央'}, 'subject': '邪少兵王'}]
-                        spoes=spoes  # {(2, 5): [(8, 11, 1)]}
-                    ))
-
-                # 这一步的目的是增加复杂情况的采样频率？
-                if data_type == 'train':
-                    flag = False
+                if data_type == "train":
                     for s, o in spoes.items():
-                        for (o1, o2, p) in o:
-                            if p in complex_relation_affi_label:
-                                flag = True
-                                continue
-                        if not flag:
-                            continue
                         tmp_spoes = {}
                         tmp_spoes[s] = spoes[s]
-
                         examples.append(
                             Example(
                                 p_id=p_id,
@@ -127,9 +100,27 @@ def read_examples(args, json_file, data_type):
                                 tok_to_orig_end_index=tok_to_orig_end_index,
                                 bert_tokens=tokens,
                                 sub_entity_list=sub_ent_list,
-                                gold_answer=src_data['spo_list'],
-                                spoes=tmp_spoes
+                                gold_answer=src_data.get('spo_list', []),
+                                spoes=spoes,
+                                tmp_spoes=tmp_spoes
                             ))
+
+                else:
+                    examples.append(
+                        Example(
+                            p_id=p_id,  # 1
+                            context=text_raw,  # '《邪少兵王》是冰火未央写的网络小说连载于旗峰天下'
+                            tok_to_orig_start_index=tok_to_orig_start_index,
+                            # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+                            tok_to_orig_end_index=tok_to_orig_end_index,
+                            # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+                            bert_tokens=tokens,
+                            # ['[CLS]', '《', '邪', '少', '兵', '王', '》', '是', '冰', '火', '未', '央', '写', '的', '网', '络', '小', '说', '连', '载', '于', '旗', '峰', '天', '下', '[SEP]']
+                            sub_entity_list=sub_ent_list,  # ['邪少兵王']
+                            gold_answer=src_data.get('spo_list', []),
+                            # [{'predicate': '作者', 'object_type': {'@value': '人物'}, 'subject_type': '图书作品', 'object': {'@value': '冰火未央'}, 'subject': '邪少兵王'}]
+                            spoes=spoes  # {(2, 5): [(8, 11, 1)]}
+                        ))
         save(examples_file, examples)
     else:
         logger.info('loading cache_data {}'.format(examples_file))
@@ -137,6 +128,7 @@ def read_examples(args, json_file, data_type):
         logger.info('examples size is {}'.format(len(examples)))
 
     return examples
+
 
 class mpn_DuIEDataset(Dataset):
     def __init__(self, args, examples, data_type):
@@ -157,59 +149,56 @@ class mpn_DuIEDataset(Dataset):
         def collate(examples):
             p_ids, examples = zip(*examples)
             p_ids = torch.tensor([p_id for p_id in p_ids], dtype=torch.long)
-            batch_token_ids, batch_segment_ids = [], []
-            batch_token_type_ids, batch_subject_labels, batch_subject_ids, batch_object_labels = [], [], [], []
+            batch_token_ids = []
+            batch_subject_labels = []
+            batch_subject_ids = []
+            batch_object_labels = []
             for example in examples:
                 spoes = example.spoes
                 token_ids = self.tokenizer.encode(example.bert_tokens[1:-1],
-                                                  is_split_into_words=True,
+                                                  is_split_into_words=False,
                                                   max_length=self.max_len,
                                                   truncation=True)  # TODO
-                segment_ids = len(token_ids) * [0]
-
                 if self.is_train:
+                    tmp_spoes = example.tmp_spoes
                     if spoes:
                         # subject标签
-                        token_type_ids = np.zeros(len(token_ids), dtype=np.long)
                         subject_labels = np.zeros((len(token_ids), 2), dtype=np.float32)
                         for s in spoes:
-                            if s[1] <= self.max_len:  # TODO
+                            if s[1] <= self.max_len - 1:  # TODO
                                 subject_labels[s[0], 0] = 1
                                 subject_labels[s[1], 1] = 1
                         # ⚠️不是随机选一个subject
-                        subject_ids = random.choice(list(spoes.keys()))
-                        if subject_ids[1] > self.max_len:
-                            break
+                        subject_ids = random.choice(list(tmp_spoes.keys()))
+                        if subject_ids[1] >= self.max_len:
+                            continue
                         # 对应的object标签
                         object_labels = np.zeros((len(token_ids), len(self.spo_config), 2), dtype=np.float32)
                         for o in spoes.get(subject_ids, []):
-                            if o[1] <= self.max_len:  # TODO
+                            if o[1] <= self.max_len - 1:  # TODO
                                 object_labels[o[0], o[2], 0] = 1
                                 object_labels[o[1], o[2], 1] = 1
-                        batch_token_ids.append(token_ids)
-                        batch_token_type_ids.append(token_type_ids)
 
-                        batch_segment_ids.append(segment_ids)
+                        batch_token_ids.append(token_ids)
                         batch_subject_labels.append(subject_labels)
                         batch_subject_ids.append(subject_ids)
                         batch_object_labels.append(object_labels)
                 else:
                     batch_token_ids.append(token_ids)
-                    batch_segment_ids.append(segment_ids)
-
+            if not batch_token_ids:
+                a = 1
             batch_token_ids = sequence_padding(batch_token_ids, is_float=False)
-            batch_segment_ids = sequence_padding(batch_segment_ids, is_float=False)
             if not self.is_train:
-                return p_ids, batch_token_ids, batch_segment_ids
+                return p_ids, batch_token_ids
             else:
-                batch_token_type_ids = sequence_padding(batch_token_type_ids, is_float=False)
                 batch_subject_ids = torch.tensor(batch_subject_ids)
                 batch_subject_labels = sequence_padding(batch_subject_labels, padding=np.zeros(2), is_float=True)
                 batch_object_labels = sequence_padding(batch_object_labels, padding=np.zeros((len(self.spo_config), 2)),
                                                        is_float=True)
-                return batch_token_ids, batch_segment_ids, batch_token_type_ids, batch_subject_ids, batch_subject_labels, batch_object_labels
+                return batch_token_ids, batch_subject_ids, batch_subject_labels, batch_object_labels
 
-        return partial(collate)
+        return collate
+
 
 if __name__ == '__main__':
     pass

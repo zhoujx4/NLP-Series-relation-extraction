@@ -8,6 +8,7 @@
 import logging
 import os
 import pickle
+import re
 import sys
 
 import torch
@@ -23,6 +24,7 @@ class Example(object):
                  tok_to_orig_end_index=None,
                  bert_tokens=None,
                  spoes=None,
+                 tmp_spoes=None,
                  sub_entity_list=None,
                  gold_answer=None, ):
         self.p_id = p_id
@@ -31,6 +33,7 @@ class Example(object):
         self.tok_to_orig_end_index = tok_to_orig_end_index
         self.bert_tokens = bert_tokens
         self.spoes = spoes
+        self.tmp_spoes = tmp_spoes
         self.sub_entity_list = sub_entity_list
         self.gold_answer = gold_answer
 

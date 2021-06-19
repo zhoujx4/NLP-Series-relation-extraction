@@ -1,3 +1,7 @@
 /data/duie_sample.json
 /log/
 /data
+predict.py
+*bak.py
+*.iml
+*.xml
