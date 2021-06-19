@@ -17,7 +17,7 @@ from transformers import BertTokenizer
 from config.mpn import spo_config
 from dataset.dataset_mhs import mhs_DuIEDataset, read_examples
 from models.model_mhs_biaffine import model_mhs_biaffine
-from mpn_evaluation import convert_spo_contour, convert2ressult, run_evaluate, convert_spo_contour2
+from run_evaluation import convert_spo_contour, convert2ressult, run_evaluate, convert_spo_contour2
 from utils.bert_optimizaation import BertAdam
 from utils.finetuning_argparse import get_argparse
 from utils.utils import seed_everything, ProgressBar, init_logger, logger, write_prediction_results
@@ -132,17 +132,17 @@ def main():
         args.s2id[st] = i
         i += 1
     args.R_num = len(args.rel2id)
-    args.Cs_num = len(args.s2id)
+    args.E_num = len(args.s2id)
 
     # tokenizer
     args.tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path, do_lower_case=True)
 
     # Dataset & Dataloader
     train_dataset = mhs_DuIEDataset(args,
-                                    examples=read_examples(args, json_file="./data/duie_dev.json")[:10000],
+                                    examples=read_examples(args, json_file="./data/duie_train.json"),
                                     data_type="train")
     eval_dataset = mhs_DuIEDataset(args,
-                                   examples=read_examples(args, json_file="./data/duie_dev.json")[20000:],
+                                   examples=read_examples(args, json_file="./data/duie_dev.json"),
                                    data_type="dev")
 
     train_iter = DataLoader(train_dataset,
@@ -161,8 +161,8 @@ def main():
 
     # model
     model = model_mhs_biaffine.from_pretrained(args.model_name_or_path,
-                                                Cs_num=args.Cs_num,
-                                                cs_em_size=250,
+                                                E_num=args.E_num,
+                                                E_em_size=250,
                                                 R_num=args.R_num)
     model.to(args.device)
 

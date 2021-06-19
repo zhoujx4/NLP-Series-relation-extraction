@@ -29,15 +29,15 @@ class Biaffine(torch.nn.Module):
 
 
 class model_mhs_biaffine(BertPreTrainedModel):
-    def __init__(self, config, Cs_num, cs_em_size, R_num):
-        super(model_mhs_biaffine, self).__init__(config, Cs_num, cs_em_size, R_num)
+    def __init__(self, config, E_num, E_em_size, R_num):
+        super(model_mhs_biaffine, self).__init__(config, E_num, E_em_size, R_num)
         self.bert = BertModel(config)
-        self.biaffine_layer = Biaffine(128 + cs_em_size, R_num)
+        self.biaffine_layer = Biaffine(128 + E_em_size, R_num)
         self.linear_start1 = nn.Linear(config.hidden_size, 256)
-        self.linear_start2 = nn.Linear(256, Cs_num + 1)
+        self.linear_start2 = nn.Linear(256, E_num + 1)
         self.linear_end1 = nn.Linear(config.hidden_size, 256)
-        self.linear_end2 = nn.Linear(256, Cs_num + 1)
-        self.cs_emb = nn.Embedding(Cs_num + 1, cs_em_size)
+        self.linear_end2 = nn.Linear(256, E_num + 1)
+        self.cs_emb = nn.Embedding(E_num + 1, E_em_size)
 
         self.f11 = nn.Linear(config.hidden_size * 2, 256)
         self.f12 = nn.Linear(256, 128)
@@ -61,10 +61,10 @@ class model_mhs_biaffine(BertPreTrainedModel):
             layer_1 = bert_output[2][-1]
             layer_2 = bert_output[2][-2]
 
-            start_logits = torch.relu(self.linear_start1(layer_1))  # [B, L, Cs_num+1]
-            start_logits = self.linear_start2(start_logits)  # [B, L, Cs_num+1]
-            end_logits = torch.relu(self.linear_end1(layer_1))  # [B, L, Cs_num+1]
-            end_logits = self.linear_end2(end_logits)  # [B, L, Cs_num+1]
+            start_logits = torch.relu(self.linear_start1(layer_1))  # [B, L, E_num+1]
+            start_logits = self.linear_start2(start_logits)  # [B, L, E_num+1]
+            end_logits = torch.relu(self.linear_end1(layer_1))  # [B, L, E_num+1]
+            end_logits = self.linear_end2(end_logits)  # [B, L, E_num+1]
 
             cs_emb = self.cs_emb(batch_subject_type_ids)
 
@@ -95,12 +95,12 @@ class model_mhs_biaffine(BertPreTrainedModel):
             layer_1 = bert_output[2][-1]
             layer_2 = bert_output[2][-2]
 
-            start_logits = torch.relu(self.linear_start1(layer_1))  # [B, L, Cs_num+1]
-            start_logits = torch.sigmoid(self.linear_start2(start_logits))  # [B, L, Cs_num+1]
+            start_logits = torch.relu(self.linear_start1(layer_1))  # [B, L, E_num+1]
+            start_logits = torch.sigmoid(self.linear_start2(start_logits))  # [B, L, E_num+1]
             start_logits = start_logits * mask.unsqueeze(-1)
             start_logits = start_logits.cpu().numpy()
-            end_logits = torch.relu(self.linear_end1(layer_1))  # [B, L, Cs_num+1]
-            end_logits = torch.sigmoid(self.linear_end2(end_logits))  # [B, L, Cs_num+1]
+            end_logits = torch.relu(self.linear_end1(layer_1))  # [B, L, E_num+1]
+            end_logits = torch.sigmoid(self.linear_end2(end_logits))  # [B, L, E_num+1]
             end_logits = end_logits * mask.unsqueeze(-1)
             end_logits = end_logits.cpu().numpy()
 
