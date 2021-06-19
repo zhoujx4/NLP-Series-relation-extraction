@@ -1,46 +1,77 @@
 # 项目说明:
-百度2021年语言与智能技术竞赛多形态信息抽取赛道关系抽取部分Pytorch版baseline  
-比赛链接:https://aistudio.baidu.com/aistudio/competition/detail/65?isFromLuge=true
-> 官方的baseline版本是基于paddlepaddle框架的,我把它改写成了Pytorch框架,其中大部分代码沿用的是官方提供的代码（如评测代码、保存预测文件代码等）
->,只是对数据读取部分（感觉原代码这部分写得稍微复杂了一点，这里进行了简化）和框架部分进行了修改,习惯用Pytorch版本的可以基于此进行优化.
+本项目是关系抽取相关模型的代码复现  
+包括以下四种方法
+- 序列标注
+- 层叠式指针网络（基于主语感知）
+- Multi-head Selection
+- Deep Biaffine Attention  
+
+用的数据是百度21年语言技术经验竞赛抽取赛道的数据，四种方法的效果如下表，更详细的请看我的知乎博文
+https://zhuanlan.zhihu.com/p/381894616
+
+|                                | F1值 |
+| ------------------------------ | ----- |
+| 官方baseline                 | 64.69 |
+| 层叠式指针网络（基于主语感知） | 61.22 |
+| Multi-head Selection           | 67.90 |
+| Deep Biaffine Attention        | 68.45 |
 
 # 环境
 - python=3.6
 - torch=1.7
 - transformers=4.5.0
-# 训练示例
-训练  
+
+# 运行示例
+序列标注
 ```
-python run.py
---max_len=150
---model_name_or_path=下载的预训练模型路径
---per_gpu_train_batch_size=200
---per_gpu_eval_batch_size=500
---learning_rate=1e-5
---linear_learning_rate=1e-2
---num_train_epochs=100
+python3 run_baseline.py
+--max_len=200
+--model_name_or_path=预训练模型路径
+--per_gpu_train_batch_size=80
+--per_gpu_eval_batch_size=100
+--learning_rate=1e-4
+--num_train_epochs=40
 --output_dir="./output"
 --weight_decay=0.01
 --early_stop=2
 ```
-预测
+层叠式指针网络（基于主语感知）
 ```
-python predict.py
---max_len=150
---model_name_or_path=下载的预训练模型路径
---per_gpu_eval_batch_size=500
+python3 run_mpn.py
+--max_len=200
+--model_name_or_path=预训练模型路径
+--per_gpu_train_batch_size=100
+--per_gpu_eval_batch_size=100
+--learning_rate=1e-4
+--num_train_epochs=40
 --output_dir="./output"
---fine_tunning_model=微调后的模型路径
+--weight_decay=0.01
+--early_stop=2
 ```
-
-# 实验结果
-用的baseline模型是三层的roBERTa(具体请看https://github.com/ymcui/Chinese-BERT-wwm)
-在官方提供的dev集上的表现如下：
-
-![image-20210412144557325](https://raw.githubusercontent.com/zhoujx4/PicGo/main/img/image-20210412144557325.png)
-
-
-
-# 后续优化策略
-
-由于数据量比较充足，可以往模型架构进行优化，做关系抽取的有几种模型架构形式，最后进行集合一下应该能显著提供效果。
+Multi-head Selection
+```
+python3 run_mhs.py
+--max_len=200
+--model_name_or_path=/data/zhoujx/prev_trained_model/rbt3
+--per_gpu_train_batch_size=25
+--per_gpu_eval_batch_size=30
+--learning_rate=1e-4
+--num_train_epochs=40
+--output_dir="./output"
+--weight_decay=0.01
+--early_stop=2
+```
+Deep Biaffine Attention
+```
+python3 run_mhs_biaffine.py
+--max_len=200
+--model_name_or_path=/data/zhoujx/prev_trained_model/rbt3
+--per_gpu_train_batch_size=15
+--per_gpu_eval_batch_size=20
+--learning_rate=1e-4
+--num_train_epochs=40
+--output_dir="./output"
+--weight_decay=0.01
+--early_stop=2
+--overwrite_cache=True
+```
